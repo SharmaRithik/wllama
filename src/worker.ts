@@ -190,7 +190,7 @@ export class ProxyToWorker {
    * Open an OPFS sync handle for a cached model file and register it in MEMFS.
    * No data is streamed to the WASM heap; reads are served from disk.
    */
-  private async opfsFileAlloc(
+  async opfsFileAlloc(
     logicalName: string,
     opfsCacheName: string
   ): Promise<void> {
@@ -205,7 +205,7 @@ export class ProxyToWorker {
    * Allocate a new file in heapfs
    * @returns fileId, to be used by fileWrite()
    */
-  private async fileAlloc(fileName: string, size: number): Promise<number> {
+  async fileAlloc(fileName: string, size: number): Promise<number> {
     const result = await this.pushTask({
       verb: 'fs.alloc',
       args: [fileName, size],
@@ -217,7 +217,7 @@ export class ProxyToWorker {
   /**
    * Write a Blob to heapfs
    */
-  private async fileWrite(fileId: number, blob: Blob): Promise<void> {
+  async fileWrite(fileId: number, blob: Blob): Promise<void> {
     const reader = blob.stream().getReader();
     let offset = 0;
     while (true) {

@@ -33,6 +33,8 @@ import type {
   GlueMsgTestBenchmarkRes,
   GlueMsgTestPerplexityRes,
   GlueMsgTokenizeRes,
+  GlueMsgMtmdInitRes,
+  GlueMsgMtmdEvalRes,
 } from './glue/messages';
 import { LIBLLAMA_VERSION } from './workers-code/generated';
 
@@ -327,6 +329,9 @@ export class Wllama {
   private hasEncoder: boolean = false;
   private decoderStartToken: number = -1;
   private nCachedTokens: number = 0;
+  private mmprojLoaded: boolean = false;
+  private supportVision: boolean = false;
+  private supportAudio: boolean = false;
 
   constructor(pathConfig: AssetsPathConfig, wllamaConfig: WllamaConfig = {}) {
     checkEnvironmentCompatible();
@@ -470,6 +475,27 @@ export class Wllama {
   usingWebGPU(): boolean {
     this.checkModelLoaded();
     return this.useWebGPU;
+  }
+
+  /**
+   * Whether an mmproj has been loaded via `loadMmproj()`.
+   */
+  get isMultimodal(): boolean {
+    return this.mmprojLoaded;
+  }
+
+  /**
+   * Whether the loaded mmproj reports vision support.
+   */
+  get hasVisionSupport(): boolean {
+    return this.supportVision;
+  }
+
+  /**
+   * Whether the loaded mmproj reports audio support.
+   */
+  get hasAudioSupport(): boolean {
+    return this.supportAudio;
   }
 
   /**
@@ -739,6 +765,88 @@ export class Wllama {
     this.logger().debug({ loadedCtxInfo });
   }
 
+  /**
+   * Load an mmproj (multimodal projector) GGUF on top of an already-loaded model.
+   *
+   * Must be called AFTER `loadModel()`. The mmproj is a separate, usually small,
+   * GGUF file (a few hundred MB at most) — distinct from the LLM gguf.
+   *
+   * For WebGPU/MEMORY64 builds, the mmproj is downloaded into the OPFS cache
+   * (same backing store as the model) and read via syncAccessHandle, since the
+   * heapfs path triggers an emscripten BigInt/Number bug in `mmapAlloc`.
+   * For 32-bit builds, the mmproj is streamed into the wasm heap directly.
+   *
+   * @param srcOrBlob URL string, Blob, or a Model from the ModelManager cache.
+   */
+  async loadMmproj(srcOrBlob: string | Blob | Model): Promise<void> {
+    this.checkModelLoaded();
+
+    const mmprojLogicalName = 'mmproj.gguf';
+    const mmprojPath = `models/${mmprojLogicalName}`;
+
+    if (typeof srcOrBlob === 'string') {
+      // URL: download into OPFS cache via the existing cache manager
+      const url = srcOrBlob;
+      const model = await this.modelManager.getModelOrDownload(url, {});
+      const files = model.files;
+      if (files.length !== 1) {
+        throw new WllamaError(
+          'mmproj must be a single-file GGUF',
+          'load_error'
+        );
+      }
+      // Register the OPFS-backed file under our logical mmproj name.
+      await this.proxy.opfsFileAlloc(mmprojLogicalName, files[0].name);
+    } else if (srcOrBlob instanceof Model) {
+      const files = srcOrBlob.files;
+      if (files.length !== 1) {
+        throw new WllamaError(
+          'mmproj must be a single-file GGUF',
+          'load_error'
+        );
+      }
+      await this.proxy.opfsFileAlloc(mmprojLogicalName, files[0].name);
+    } else if (srcOrBlob instanceof Blob) {
+      // Blob input: fall back to heap path. Only safe on 32-bit builds.
+      if (srcOrBlob.size === 0) {
+        throw new WllamaError('mmproj blob is empty', 'load_error');
+      }
+      const fileId = await this.proxy.fileAlloc(
+        mmprojLogicalName,
+        srcOrBlob.size
+      );
+      await this.proxy.fileWrite(fileId, srcOrBlob);
+    } else {
+      throw new WllamaError(
+        'loadMmproj: srcOrBlob must be a URL string, Blob, or Model',
+        'load_error'
+      );
+    }
+
+    const res = await this.proxy.wllamaAction<GlueMsgMtmdInitRes>('mtmd_init', {
+      _name: 'mini_req',
+      mmproj_path: mmprojPath,
+      use_gpu: this.useWebGPU,
+      n_threads: this.nbThreads,
+    } as any);
+
+    if (!res.success) {
+      throw new WllamaError(
+        'Failed to initialize mmproj (mtmd_init returned success=false)',
+        'load_error'
+      );
+    }
+
+    this.mmprojLoaded = true;
+    this.supportVision = !!res.support_vision;
+    this.supportAudio = !!res.support_audio;
+    this.logger().debug({
+      mmprojLoaded: true,
+      supportVision: this.supportVision,
+      supportAudio: this.supportAudio,
+    });
+  }
+
   getLoadedContextInfo(): LoadedContextInfo {
     this.checkModelLoaded();
     if (!this.loadedContextInfo) {
@@ -843,7 +951,6 @@ export class Wllama {
     this.checkModelLoaded();
     this.samplingConfig = options.sampling ?? {};
     await this.samplingInit(this.samplingConfig);
-    const stopTokens = new Set(options.stopTokens ?? []);
     // process prompt
     let tokens = await this.tokenize(prompt, true);
     if (this.addBosToken && tokens[0] !== this.bosToken) {
@@ -863,34 +970,118 @@ export class Wllama {
     } else {
       await this.decode(tokens, {});
     }
+    return await this.runSamplingLoop(options);
+  }
+
+  /**
+   * Shared sampling loop used by both text-only and multimodal completions.
+   * Assumes samplingInit + the prompt-prime step (text tokens via decode, or
+   * mtmd_eval for multimodal) have already populated the KV cache.
+   */
+  private async runSamplingLoop(
+    options: ChatCompletionOptions
+  ): Promise<string> {
+    const stopTokens = new Set(options.stopTokens ?? []);
     let outBuf = new Uint8Array();
-    // abort signal
     let abort = false;
-    // abortSignalFn is a legacy function, use options.abortSignal instead
     const abortSignalFn = () => {
       abort = true;
     };
-    // predict next tokens
     for (let i = 0; i < (options.nPredict ?? Infinity); i++) {
       const sampled = await this.samplingSample();
       if (this.isTokenEOG(sampled.token) || stopTokens.has(sampled.token)) {
-        break; // stop token
+        break;
       }
       // @ts-ignore Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'Uint8Array<ArrayBuffer>'
       outBuf = joinBuffers([outBuf, sampled.piece]);
       if (options.onNewToken) {
         options.onNewToken(sampled.token, sampled.piece, bufToText(outBuf), {
-          abortSignal: abortSignalFn, // legacy
+          abortSignal: abortSignalFn,
         });
       }
       if (abort || options.abortSignal?.aborted) {
-        break; // abort signal is set
+        break;
       }
-      // decode next token
       await this.samplingAccept([sampled.token]);
       await this.decode([sampled.token], {});
     }
     return bufToText(outBuf);
+  }
+
+  /**
+   * Make a completion for a prompt that mixes text and one or more images.
+   *
+   * The prompt should contain `<__media__>` markers — one per image — at the
+   * positions where the model should attend to each image. If no marker is
+   * present, one marker per image is auto-prepended (matching mtmd-cli).
+   *
+   * Requires `loadMmproj()` to have been called and the loaded mmproj to
+   * report vision support.
+   */
+  async createCompletionWithImages(
+    prompt: string,
+    images: Uint8Array[],
+    options: ChatCompletionOptions = {}
+  ): Promise<string> {
+    this.checkModelLoaded();
+    if (!this.mmprojLoaded) {
+      throw new WllamaError(
+        'createCompletionWithImages: mmproj is not loaded. Call loadMmproj() first.',
+        'inference_error'
+      );
+    }
+    if (!this.supportVision) {
+      throw new WllamaError(
+        'createCompletionWithImages: loaded mmproj does not support vision',
+        'inference_error'
+      );
+    }
+    if (!images || images.length === 0) {
+      throw new WllamaError(
+        'createCompletionWithImages: at least one image is required',
+        'inference_error'
+      );
+    }
+
+    let text = prompt;
+    const MEDIA_MARKER = '<__media__>';
+    const markerCount = (text.match(/<__media__>/g) || []).length;
+    if (markerCount === 0) {
+      text = MEDIA_MARKER.repeat(images.length) + text;
+    } else if (markerCount !== images.length) {
+      this.logger().warn(
+        `createCompletionWithImages: prompt has ${markerCount} <__media__> marker(s) but ${images.length} image(s) were provided`
+      );
+    }
+
+    this.samplingConfig = options.sampling ?? {};
+    await this.samplingInit(this.samplingConfig);
+
+    if (!options.useCache) {
+      await this.kvClear();
+      this.nCachedTokens = 0;
+    }
+
+    const res = await this.proxy.wllamaAction<GlueMsgMtmdEvalRes>('mtmd_eval', {
+      _name: 'mevl_req',
+      text,
+      bitmaps: images,
+      n_past: this.nCachedTokens,
+      seq_id: 0,
+      n_batch: this.loadedContextInfo.n_batch,
+      logits_last: true,
+    } as any);
+
+    if (!res.success) {
+      throw new WllamaError(
+        'mtmd_eval failed (success=false)',
+        'inference_error'
+      );
+    }
+
+    this.nCachedTokens = res.new_n_past;
+
+    return await this.runSamplingLoop(options);
   }
 
   /**
