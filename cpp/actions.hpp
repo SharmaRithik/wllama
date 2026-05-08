@@ -9,6 +9,8 @@
 
 #include "llama.h"
 #include "ggml-backend.h"
+#include "mtmd.h"
+#include "mtmd-helper.h"
 #include "helpers/wcommon.h"
 #include "helpers/wsampling.h"
 
@@ -29,6 +31,7 @@ struct app_t
   llama_batch batch = llama_batch_init(512, 0, 1);
   llama_tokens tokens;
   int32_t seed = LLAMA_DEFAULT_SEED;
+  mtmd_context *mctx = nullptr;
 };
 
 inline std::vector<char> convert_string_to_buf(std::string &input)
@@ -97,6 +100,11 @@ private:
 
 void free_all(app_t &app)
 {
+  if (app.mctx != nullptr)
+  {
+    mtmd_free(app.mctx);
+    app.mctx = nullptr;
+  }
   if (app.ctx != nullptr)
     llama_free(app.ctx);
   if (app.model != nullptr)
@@ -969,6 +977,70 @@ glue_msg_test_perplexity_res action_test_perplexity(app_t &app, const char *req_
   res.cross_entropy.value = cross_entropy;
   res.n_tokens.value = n - 1;
   res.t_ms.value = t_end - t_start;
+  return res;
+}
+
+inline glue_msg_mtmd_init_res action_mtmd_init(app_t &app, const char *req_raw)
+{
+  PARSE_REQ(glue_msg_mtmd_init_req);
+  if (!app.model)
+    throw app_exception("Model not loaded; load model before mtmd_init");
+  if (app.mctx)
+  {
+    mtmd_free(app.mctx);
+    app.mctx = nullptr;
+  }
+  mtmd_context_params mp = mtmd_context_params_default();
+  mp.use_gpu = req.use_gpu.value;
+  mp.n_threads = req.n_threads.value;
+  mp.print_timings = false;
+  mp.media_marker = mtmd_default_marker();
+  app.mctx = mtmd_init_from_file(req.mmproj_path.value.c_str(), app.model, mp);
+  glue_msg_mtmd_init_res res;
+  res.success.value = app.mctx != nullptr;
+  res.support_vision.value = app.mctx ? mtmd_support_vision(app.mctx) : false;
+  res.support_audio.value = app.mctx ? mtmd_support_audio(app.mctx) : false;
+  return res;
+}
+
+inline glue_msg_mtmd_eval_res action_mtmd_eval(app_t &app, const char *req_raw)
+{
+  PARSE_REQ(glue_msg_mtmd_eval_req);
+  if (!app.mctx)
+    throw app_exception("mtmd not initialized; call mtmd_init first");
+  // build bitmaps from raw byte buffers
+  std::vector<mtmd::bitmap> bitmaps_owned;
+  std::vector<const mtmd_bitmap *> bitmap_ptrs;
+  for (auto &buf : req.bitmaps.arr)
+  {
+    mtmd_bitmap *bm = mtmd_helper_bitmap_init_from_buf(
+        app.mctx,
+        reinterpret_cast<const unsigned char *>(buf.data()),
+        buf.size());
+    if (!bm)
+      throw app_exception("Failed to decode bitmap");
+    bitmaps_owned.emplace_back(bm);
+    bitmap_ptrs.push_back(bm);
+  }
+  mtmd::input_chunks chunks(mtmd_input_chunks_init());
+  mtmd_input_text text{req.text.value.c_str(), /*add_special*/ true, /*parse_special*/ true};
+  int32_t r = mtmd_tokenize(app.mctx, chunks.ptr.get(), &text, bitmap_ptrs.data(), bitmap_ptrs.size());
+  if (r != 0)
+    throw app_exception(std::string("mtmd_tokenize failed: ") + std::to_string(r));
+  llama_pos new_n_past = req.n_past.value;
+  int32_t er = mtmd_helper_eval_chunks(
+      app.mctx, app.ctx, chunks.ptr.get(),
+      req.n_past.value, req.seq_id.value, req.n_batch.value,
+      req.logits_last.value, &new_n_past);
+  if (er != 0)
+    throw app_exception(std::string("mtmd_helper_eval_chunks failed: ") + std::to_string(er));
+  // Sync app.tokens to match the new KV-cache position so subsequent
+  // action_decode calls compute n_past correctly (they use app.tokens.size()).
+  // Token IDs are placeholders (0) — only the size is read for positions.
+  app.tokens.resize((size_t)new_n_past, 0);
+  glue_msg_mtmd_eval_res res;
+  res.success.value = true;
+  res.new_n_past.value = (int)new_n_past;
   return res;
 }
 

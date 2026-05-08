@@ -905,3 +905,39 @@ struct glue_msg_chat_format_res
   GLUE_FIELD(str, message)
   GLUE_FIELD(str, formatted_chat)
 };
+
+/////////
+
+struct glue_msg_mtmd_init_req
+{
+  GLUE_HANDLER("mini_req")
+  GLUE_FIELD(str, mmproj_path)
+  GLUE_FIELD(bool, use_gpu)
+  GLUE_FIELD(int, n_threads)
+};
+
+struct glue_msg_mtmd_init_res
+{
+  GLUE_HANDLER("mini_res")
+  GLUE_FIELD(bool, success)
+  GLUE_FIELD(bool, support_vision)
+  GLUE_FIELD(bool, support_audio)
+};
+
+struct glue_msg_mtmd_eval_req
+{
+  GLUE_HANDLER("mevl_req")
+  GLUE_FIELD(str, text)
+  GLUE_FIELD(arr_raw, bitmaps)
+  GLUE_FIELD(int, n_past)
+  GLUE_FIELD(int, seq_id)
+  GLUE_FIELD(int, n_batch)
+  GLUE_FIELD(bool, logits_last)
+};
+
+struct glue_msg_mtmd_eval_res
+{
+  GLUE_HANDLER("mevl_res")
+  GLUE_FIELD(bool, success)
+  GLUE_FIELD(int, new_n_past)
+};

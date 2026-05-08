@@ -4,7 +4,14 @@ project("wllama")
 option(GGML_WEBGPU "Enable GGML WebGPU backend" ON)
 option(GGML_WEBGPU_JSPI "Enable GGML WebGPU JSPI support" ON)
 option(LLAMA_WASM_MEM64 "Enable 64-bit memory for WebAssembly builds" OFF)
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
 add_subdirectory(llama.cpp)
+# LLAMA_INSTALL_VERSION is defined inside llama.cpp/CMakeLists.txt scope; redefine here
+# so mtmd's set_target_properties(mtmd PROPERTIES VERSION ...) gets a non-empty value.
+if (NOT DEFINED LLAMA_INSTALL_VERSION)
+  set(LLAMA_INSTALL_VERSION 0.0.0)
+endif()
+add_subdirectory(llama.cpp/tools/mtmd)
 
 set(CMAKE_THREAD_LIBS_INIT "-lpthread")
 set(CMAKE_HAVE_THREADS_LIBRARY 1)
@@ -24,4 +31,4 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/cpp/helpers)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/include)
 
 add_executable(wllama ${WLLAMA_SRC})
-target_link_libraries(wllama PRIVATE ggml llama ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(wllama PRIVATE ggml llama mtmd ${CMAKE_THREAD_LIBS_INIT})

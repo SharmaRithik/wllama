@@ -1068,6 +1068,104 @@ export const GLUE_MESSAGE_PROTOTYPES: { [name: string]: GlueMessageProto } = {
         "isNullable": false
       }
     ]
+  },
+  "mini_req": {
+    "name": "mini_req",
+    "structName": "glue_msg_mtmd_init_req",
+    "className": "GlueMsgMtmdInitReq",
+    "fields": [
+      {
+        "type": "str",
+        "name": "mmproj_path",
+        "isNullable": false
+      },
+      {
+        "type": "bool",
+        "name": "use_gpu",
+        "isNullable": false
+      },
+      {
+        "type": "int",
+        "name": "n_threads",
+        "isNullable": false
+      }
+    ]
+  },
+  "mini_res": {
+    "name": "mini_res",
+    "structName": "glue_msg_mtmd_init_res",
+    "className": "GlueMsgMtmdInitRes",
+    "fields": [
+      {
+        "type": "bool",
+        "name": "success",
+        "isNullable": false
+      },
+      {
+        "type": "bool",
+        "name": "support_vision",
+        "isNullable": false
+      },
+      {
+        "type": "bool",
+        "name": "support_audio",
+        "isNullable": false
+      }
+    ]
+  },
+  "mevl_req": {
+    "name": "mevl_req",
+    "structName": "glue_msg_mtmd_eval_req",
+    "className": "GlueMsgMtmdEvalReq",
+    "fields": [
+      {
+        "type": "str",
+        "name": "text",
+        "isNullable": false
+      },
+      {
+        "type": "arr_raw",
+        "name": "bitmaps",
+        "isNullable": false
+      },
+      {
+        "type": "int",
+        "name": "n_past",
+        "isNullable": false
+      },
+      {
+        "type": "int",
+        "name": "seq_id",
+        "isNullable": false
+      },
+      {
+        "type": "int",
+        "name": "n_batch",
+        "isNullable": false
+      },
+      {
+        "type": "bool",
+        "name": "logits_last",
+        "isNullable": false
+      }
+    ]
+  },
+  "mevl_res": {
+    "name": "mevl_res",
+    "structName": "glue_msg_mtmd_eval_res",
+    "className": "GlueMsgMtmdEvalRes",
+    "fields": [
+      {
+        "type": "bool",
+        "name": "success",
+        "isNullable": false
+      },
+      {
+        "type": "int",
+        "name": "new_n_past",
+        "isNullable": false
+      }
+    ]
   }
 };
 
@@ -1454,5 +1552,39 @@ export interface GlueMsgChatFormatRes {
   formatted_chat: string;
 }
 
+// struct glue_msg_mtmd_init_req
+export interface GlueMsgMtmdInitReq {
+  _name: "mini_req";
+  mmproj_path: string;
+  use_gpu: boolean;
+  n_threads: number;
+}
 
-export type GlueMsg = GlueMsgError | GlueMsgLoadReq | GlueMsgLoadRes | GlueMsgSetOptionsReq | GlueMsgSetOptionsRes | GlueMsgSamplingInitReq | GlueMsgSamplingInitRes | GlueMsgGetVocabReq | GlueMsgGetVocabRes | GlueMsgLookupTokenReq | GlueMsgLookupTokenRes | GlueMsgTokenizeReq | GlueMsgTokenizeRes | GlueMsgDetokenizeReq | GlueMsgDetokenizeRes | GlueMsgDecodeReq | GlueMsgDecodeRes | GlueMsgEncodeReq | GlueMsgEncodeRes | GlueMsgSamplingSampleReq | GlueMsgSamplingSampleRes | GlueMsgSamplingAcceptReq | GlueMsgSamplingAcceptRes | GlueMsgGetLogitsReq | GlueMsgGetLogitsRes | GlueMsgGetEmbeddingsReq | GlueMsgGetEmbeddingsRes | GlueMsgGetKvRemoveReq | GlueMsgGetKvRemoveRes | GlueMsgGetKvClearReq | GlueMsgGetKvClearRes | GlueMsgSessionSaveReq | GlueMsgSessionSaveRes | GlueMsgSessionLoadReq | GlueMsgSessionLoadRes | GlueMsgStatusReq | GlueMsgStatusRes | GlueMsgPerfContextReq | GlueMsgPerfContextRes | GlueMsgPerfResetReq | GlueMsgPerfResetRes | GlueMsgTestBenchmarkReq | GlueMsgTestBenchmarkRes | GlueMsgTestPerplexityReq | GlueMsgTestPerplexityRes | GlueMsgChatFormatReq | GlueMsgChatFormatRes;
+// struct glue_msg_mtmd_init_res
+export interface GlueMsgMtmdInitRes {
+  _name: "mini_res";
+  success: boolean;
+  support_vision: boolean;
+  support_audio: boolean;
+}
+
+// struct glue_msg_mtmd_eval_req
+export interface GlueMsgMtmdEvalReq {
+  _name: "mevl_req";
+  text: string;
+  bitmaps: Uint8Array[];
+  n_past: number;
+  seq_id: number;
+  n_batch: number;
+  logits_last: boolean;
+}
+
+// struct glue_msg_mtmd_eval_res
+export interface GlueMsgMtmdEvalRes {
+  _name: "mevl_res";
+  success: boolean;
+  new_n_past: number;
+}
+
+
+export type GlueMsg = GlueMsgError | GlueMsgLoadReq | GlueMsgLoadRes | GlueMsgSetOptionsReq | GlueMsgSetOptionsRes | GlueMsgSamplingInitReq | GlueMsgSamplingInitRes | GlueMsgGetVocabReq | GlueMsgGetVocabRes | GlueMsgLookupTokenReq | GlueMsgLookupTokenRes | GlueMsgTokenizeReq | GlueMsgTokenizeRes | GlueMsgDetokenizeReq | GlueMsgDetokenizeRes | GlueMsgDecodeReq | GlueMsgDecodeRes | GlueMsgEncodeReq | GlueMsgEncodeRes | GlueMsgSamplingSampleReq | GlueMsgSamplingSampleRes | GlueMsgSamplingAcceptReq | GlueMsgSamplingAcceptRes | GlueMsgGetLogitsReq | GlueMsgGetLogitsRes | GlueMsgGetEmbeddingsReq | GlueMsgGetEmbeddingsRes | GlueMsgGetKvRemoveReq | GlueMsgGetKvRemoveRes | GlueMsgGetKvClearReq | GlueMsgGetKvClearRes | GlueMsgSessionSaveReq | GlueMsgSessionSaveRes | GlueMsgSessionLoadReq | GlueMsgSessionLoadRes | GlueMsgStatusReq | GlueMsgStatusRes | GlueMsgPerfContextReq | GlueMsgPerfContextRes | GlueMsgPerfResetReq | GlueMsgPerfResetRes | GlueMsgTestBenchmarkReq | GlueMsgTestBenchmarkRes | GlueMsgTestPerplexityReq | GlueMsgTestPerplexityRes | GlueMsgChatFormatReq | GlueMsgChatFormatRes | GlueMsgMtmdInitReq | GlueMsgMtmdInitRes | GlueMsgMtmdEvalReq | GlueMsgMtmdEvalRes;
