@@ -8,7 +8,48 @@ export const WLLAMA_CONFIG_PATHS = WasmFromPackage;
 
 export const MAX_GGUF_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
-export const LIST_MODELS = [
+export interface ModelEntry {
+  url: string;
+  size: number;
+  /** Optional multimodal projector GGUF for vision support. */
+  mmprojUrl?: string;
+  /** Approximate mmproj file size in bytes (informational). */
+  mmprojSize?: number;
+}
+
+export const LIST_MODELS: ModelEntry[] = [
+  // Vision: SmolVLM-256M (smallest verified vision pair — ideal for smoke-test)
+  {
+    url: 'https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/main/SmolVLM-256M-Instruct-Q8_0.gguf',
+    size: 175054528,
+    mmprojUrl:
+      'https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/main/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf',
+    mmprojSize: 103769856,
+  },
+  // Vision: SmolVLM-2.2B (Q4_K_M LLM + Q8_0 mmproj — same prompt format as 256M)
+  {
+    url: 'https://huggingface.co/ggml-org/SmolVLM-Instruct-GGUF/resolve/main/SmolVLM-Instruct-Q4_K_M.gguf',
+    size: 1112242368,
+    mmprojUrl:
+      'https://huggingface.co/ggml-org/SmolVLM-Instruct-GGUF/resolve/main/mmproj-SmolVLM-Instruct-Q8_0.gguf',
+    mmprojSize: 592521344,
+  },
+  // Vision: LiquidAI LFM2.5-VL-450M (F16 LLM + F16 mmproj)
+  {
+    url: 'https://huggingface.co/LiquidAI/LFM2.5-VL-450M-GGUF/resolve/main/LFM2.5-VL-450M-F16.gguf',
+    size: 711486624,
+    mmprojUrl:
+      'https://huggingface.co/LiquidAI/LFM2.5-VL-450M-GGUF/resolve/main/mmproj-LFM2.5-VL-450m-F16.gguf',
+    mmprojSize: 189126080,
+  },
+  // Vision: Gemma 3 4B IT (higher quality, ~3.3 GB total — uses 64-bit wasm)
+  {
+    url: 'https://huggingface.co/unsloth/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf',
+    size: 2489894016,
+    mmprojUrl:
+      'https://huggingface.co/unsloth/gemma-3-4b-it-GGUF/resolve/main/mmproj-F16.gguf',
+    mmprojSize: 851251328,
+  },
   {
     url: 'https://huggingface.co/QuantFactory/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct.Q4_K_M.gguf',
     size: 284164096,

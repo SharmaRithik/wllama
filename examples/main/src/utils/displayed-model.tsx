@@ -8,6 +8,8 @@ export class DisplayedModel {
   size: number;
   isUserAdded: boolean;
   cachedModel?: Model;
+  mmprojUrl?: string;
+  mmprojSize?: number;
 
   state: ModelState = ModelState.NOT_DOWNLOADED;
   downloadPercent: number = -1; // from 0.0 to 1.0; -1 means not downloading
@@ -16,13 +18,17 @@ export class DisplayedModel {
     url: string,
     size: number,
     isUserAdded: boolean,
-    cachedModel?: Model
+    cachedModel?: Model,
+    mmprojUrl?: string,
+    mmprojSize?: number
   ) {
     this.url = url;
     this.size = size;
     this.isUserAdded = isUserAdded;
     this.state = !!cachedModel ? ModelState.READY : ModelState.NOT_DOWNLOADED;
     this.cachedModel = cachedModel;
+    this.mmprojUrl = mmprojUrl;
+    this.mmprojSize = mmprojSize;
   }
 
   get hfModel() {
@@ -44,7 +50,9 @@ export class DisplayedModel {
       this.url,
       this.size,
       this.isUserAdded,
-      this.cachedModel
+      this.cachedModel,
+      this.mmprojUrl,
+      this.mmprojSize
     );
     obj.state = overwrite.state ?? this.state;
     obj.downloadPercent = overwrite.downloadPercent ?? this.downloadPercent;
@@ -78,7 +86,14 @@ export function updateUserAddedModels(models: DisplayedModel[]) {
 export function getPresetModels(cachedModels: Model[]): DisplayedModel[] {
   return LIST_MODELS.map((m) => {
     const cachedModel = cachedModels.find((cm) => cm.url === m.url);
-    return new DisplayedModel(m.url, m.size, false, cachedModel);
+    return new DisplayedModel(
+      m.url,
+      m.size,
+      false,
+      cachedModel,
+      m.mmprojUrl,
+      m.mmprojSize
+    );
   });
 }
 

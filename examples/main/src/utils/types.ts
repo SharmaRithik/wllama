@@ -17,6 +17,8 @@ export interface RuntimeInfo {
   isMultithread: boolean;
   usingWebGPU: boolean;
   hasChatTemplate: boolean;
+  hasVisionSupport: boolean;
+  hasAudioSupport: boolean;
 }
 
 export interface InferenceParams {
@@ -32,6 +34,10 @@ export interface Message {
   id: number;
   content: string;
   role: 'system' | 'user' | 'assistant';
+  /** Optional inline image bytes (vision models). */
+  imageBytes?: Uint8Array;
+  /** Optional MIME type for the inline image. */
+  imageMime?: string;
 }
 
 export interface Conversation {

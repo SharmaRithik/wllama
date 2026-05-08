@@ -14,3 +14,11 @@ _tmp
 /cpp/test_glue
 /cpp/*.bin
 tmp.patch
+
+# Downloaded by the Docker wasm build (Dawn WebGPU emscripten port).
+/emdawn.zip
+/emdawnwebgpu_pkg/
+
+# Local agent / scratch directories.
+/.claude/
+/memory/

@@ -44,6 +44,11 @@ interface WllamaContextValue {
     input: string,
     callback: (piece: string) => void
   ): Promise<void>;
+  createCompletionWithImage(
+    input: string,
+    image: Uint8Array,
+    callback: (piece: string) => void
+  ): Promise<void>;
   stopCompletion(): void;
   isGenerating: boolean;
   currentConvId: number;
@@ -175,11 +180,17 @@ export const WllamaProvider = ({ children }: any) => {
         n_ctx: currParams.nContext,
         n_batch: currParams.nBatch,
       });
+      // If this model entry has a paired mmproj, load it on top.
+      if (model.mmprojUrl) {
+        await wllamaInstance.loadMmproj(model.mmprojUrl);
+      }
       setLoadedModel(model.clone({ state: ModelState.LOADED }));
       setCurrRuntimeInfo({
         isMultithread: wllamaInstance.isMultithread(),
         usingWebGPU: wllamaInstance.usingWebGPU(),
         hasChatTemplate: !!wllamaInstance.getChatTemplate(),
+        hasVisionSupport: !!wllamaInstance.hasVisionSupport,
+        hasAudioSupport: !!wllamaInstance.hasAudioSupport,
       });
     } catch (e) {
       resetWllamaInstance(currParams.backend);
@@ -218,6 +229,43 @@ export const WllamaProvider = ({ children }: any) => {
     callback(result);
     stopSignal = false;
     setGenerating(false);
+  };
+
+  const createCompletionWithImage = async (
+    input: string,
+    image: Uint8Array,
+    callback: (currentText: string) => void
+  ) => {
+    if (isDownloading || !loadedModel || isLoadingModel) return;
+    setGenerating(true);
+    stopSignal = false;
+    try {
+      const result = await wllamaInstance.createCompletionWithImages(
+        input,
+        [image],
+        {
+          // Cap multimodal generations: image captions/QA rarely exceed ~512 tokens,
+          // and a small VLM stuck in a loop will just keep going if we let it.
+          nPredict: Math.min(currParams.nPredict, 512),
+          useCache: false,
+          sampling: {
+            temp: currParams.temperature,
+            // Discourage exact-paragraph repetition that small VLMs fall into.
+            penalty_repeat: 1.1,
+            penalty_last_n: 256,
+          },
+          // @ts-ignore unused variable
+          onNewToken(token, piece, currentText, optionals) {
+            callback(currentText);
+            if (stopSignal) optionals.abortSignal();
+          },
+        }
+      );
+      callback(result);
+    } finally {
+      stopSignal = false;
+      setGenerating(false);
+    }
   };
 
   const stopCompletion = () => {
@@ -292,6 +340,7 @@ export const WllamaProvider = ({ children }: any) => {
         currParams,
         setParams,
         createCompletion,
+        createCompletionWithImage,
         stopCompletion,
         isGenerating,
         currentConvId,
